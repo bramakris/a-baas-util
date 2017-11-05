@@ -9,7 +9,7 @@
     "API",
     "SDK"
   ],
-  "author": "Bharani Ramakrishnan",
+  "author": "bramakris",
   "license": "MIT",
   "dependencies": {
     "request": "^2.81.0",
