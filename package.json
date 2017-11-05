@@ -1,0 +1,24 @@
+{
+  "name": "a-baas-util",
+  "version": "0.3.8",
+  "description": "API/SDK for working with Apigee BaaS",
+  "scripts": {},
+  "keywords": [
+    "apigee",
+    "baas",
+    "API",
+    "SDK"
+  ],
+  "author": "Bharani Ramakrishnan",
+  "license": "MIT",
+  "dependencies": {
+    "request": "^2.81.0",
+    "request-promise-native": "^1.0.4",
+    "simple-rate-limiter": "^0.2.3",
+    "mkdirp": "^0.5.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bramakris/a-baas-util.git"
+  }
+}
