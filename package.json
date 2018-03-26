@@ -12,10 +12,11 @@
   "author": "bramakris",
   "license": "MIT",
   "dependencies": {
+    "lodash.uniqby": "^4.7.0",
+    "mkdirp": "^0.5.1",
     "request": "^2.81.0",
     "request-promise-native": "^1.0.4",
-    "simple-rate-limiter": "^0.2.3",
-    "mkdirp": "^0.5.1"
+    "simple-rate-limiter": "^0.2.3"
   },
   "repository": {
     "type": "git",

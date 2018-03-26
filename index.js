@@ -30,9 +30,15 @@ var Util = function(opts) {
     Token = {token: token, expiry: expiry} 
   }
 
+  var req = request.defaults({
+    pool: {maxSockets: 100},
+    agent: false,
+    timeout: 120000
+  })
+
   // All API methods return promises
   API.token = function() {
-    return request({
+    return req({
       uri: `https://${opts.host}/${opts.org}/${opts.app}/token`,
       method: 'post',
       form: {
@@ -75,7 +81,7 @@ var Util = function(opts) {
       method: 'post'
     }
     args = includeBody(args, data)
-    return request(args)
+    return req(args)
   }
 
   //PUT supports only object, not arrays
@@ -87,13 +93,13 @@ var Util = function(opts) {
       method: 'put'
     }
     args = includeBody(args, data)
-    return request(args)
+    return req(args)
   }
 
   //Delete supports only single object - not array
   API.deleteCollection = function(name, token, data) {
     var key = data.uuid || data.name
-    return request({
+    return req({
       uri: `https://${opts.host}/${opts.org}/${opts.app}/${name}/${key}?access_token=${token}`,
       json: true,
       method: 'delete'
@@ -114,7 +120,7 @@ var Util = function(opts) {
   }
 
   API.collections = function(token) {
-    return request({
+    return req({
       uri: `https://${opts.host}/${opts.org}/${opts.app}?access_token=${token}`,
       json: true
     })
@@ -123,7 +129,7 @@ var Util = function(opts) {
   API.query1 = function(collection, query, token) {
     var q = '&limit=1'
     if (query) q += '&ql=' + query
-    return request({
+    return req({
       uri: `https://${opts.host}/${opts.org}/${opts.app}/${collection}?access_token=${token}${q}`,
       method: 'get',
       json: true
@@ -134,7 +140,7 @@ var Util = function(opts) {
     var q = '&limit=' + (opts.limit || 1000)
     if (query) q += '&ql=' + query
     if (cursor) q += '&cursor=' + cursor
-    return request({
+    return req({
       uri: `https://${opts.host}/${opts.org}/${opts.app}/${collection}?access_token=${token}${q}`,
       method: 'get',
       json: true
@@ -287,40 +293,106 @@ var Util = function(opts) {
     })
   }
 
-  // TODO: Do not expose this
-  _.do = function(method, name, data) {
-    return new Promise((resolve, reject) => {
-      if (! Array.isArray(data)) data = [data]
-      var pending = data.length 
-      var index = 0
-      var results = []
+  var chunk = function(arr, size) {
+    var b = [], i
+    if (! size || size < 0) return [arr]
+    for (i = 0; i < arr.length; i += size) {
+      b.push(arr.slice(i, i+size))
+    }
+    return b
+  }
 
-      var handler = function(obj) {
-        var meth = method === 'put' && !obj.name && !obj.uuid ? 'post' : method 
-        _.token()
-        .then(token => API[meth + 'Collection'](name, token, obj))
-        .then(res => {
-          results = results.concat(res.entities)
-          pending--
-          index++
-          if (! pending) resolve(results)
-          else handler(data[index])
+  var doOp = function(method, name, data, opts) {
+    // opts: {batch, sleep}
+    // default is batch:1, sleep:0 to retain backward compatibility
+    opts = Object.assign({sleep: 0, batch: 1, log: false, retry: 0}, opts || {})
+    var isBatched = opts.batch
+    if (! Array.isArray(data)) data = [data]
+    var batches = chunk(data, opts.batch)
+    var batchIndex = 0
+    var batchPending = batches.length
+    var processed = 0
+    var total = data.length
+    var results = []
+    var timeouts = 0
+    var dnsfails = 0
+    var gretries = 0
+
+    // now we have this many batches, resolve them in order
+    return new Promise((resolve, reject) => {
+      // we will run through batches sequentially, but each batch is exec in parallel
+      var nextBatch = function() {
+        var batch = batches[batchIndex]
+        var pending = batch.length
+        var retry = opts.retry ? +opts.retry : 0
+        batch.forEach(function(_obj) {
+          var run = function(obj) {
+            var retries = 0
+            var meth = method === 'put' && !obj.name && !obj.uuid ? 'post' : method 
+            _.token()
+            .then(token => API[meth + 'Collection'](name, token, obj))
+            .then(res => {
+              results = results.concat(res.entities)
+              processed += 1
+              if (opts.log) {
+                process.stderr.write('\r'+processed+'/'+data.length + ' D='+dnsfails+ ' T='+timeouts+' R='+gretries + ' ')
+              }
+              pending--
+              if (! pending) {
+                batchPending--
+                batchIndex++
+                // don't sleep for last batch
+                if (! batchPending) return resolve(results)
+                // batch done, sleep and resume
+                setTimeout(function() {
+                  // resume
+                  if (batchPending) nextBatch()
+                  else resolve(results)
+                }, opts.sleep)
+              }
+            })
+            .catch(err => {
+              var code = err.cause ? err.cause.code : 'UNKNOWN'
+              var shouldRetry = false
+              // These are errors we can address by retrying
+              var errs = ['ENOTFOUND', 'ETIMEDOUT', 'ESOCKETTIMEDOUT']
+              if (errs.includes(code) && retry) {
+                retries += 1
+                // POST is dangerous to retry whatever the circumstances
+                if (retries < retry && method !== 'post') {
+                  shouldRetry = true
+                  if (code === 'ENOTFOUND') {
+                    gretries += 1
+                    dnsfails += 1
+                  }
+                  else if (code === 'ETIMEDOUT' || code === 'ESOCKETTIMEDOUT') {
+                    gretries += 1
+                    timeouts += 1
+                  }
+                }
+              }
+              if (shouldRetry) run(obj)
+              else reject(err)
+            })
+          }
+          process.nextTick(function() {
+            run(_obj)
+          })
         })
-        .catch(err => reject(err))
       }
-      if (pending) handler(data[index])
+      if (batchPending) nextBatch()
       else resolve([])
     })
   }
 
   // POST automatically handles multiple entities as arrays in one operations
-  _.post = function(name, data) {
-    return _.do('post', name, data)
+  _.post = function(name, data, opts) {
+    return doOp('post', name, data, opts)
   }
 
   // PUT does not support arrays. So we enable it manually
-  _.put = function(name, data) {
-    return _.do('put', name, data)
+  _.put = function(name, data, opts) {
+    return doOp('put', name, data, opts)
   }
 
   var doBy = function(op, name, data, prop) {
@@ -359,8 +431,8 @@ var Util = function(opts) {
     return doBy("put", name, data, prop)
   }
 
-  _.delete = function(name, data) {
-    return _.do('delete', name, data)
+  _.delete = function(name, data, opts) {
+    return doOp('delete', name, data, opts)
   }
 
   _.deleteBy = function(name, data, prop) {
@@ -389,8 +461,7 @@ var Util = function(opts) {
   _.write = function(file, data, enc) {
     return new Promise(function(resolve, reject) {
       try {
-        var str = file.toLowerCase().endsWith(".json") 
-          ? JSON.stringify(data, null, 2) : data
+        var str = (typeof data === 'object') ? JSON.stringify(data, null, 2) : data
         var opts = {}
         opts.encoding = enc ? enc : "utf-8"
         fs.writeFileSync(file, str, opts)
@@ -409,9 +480,11 @@ var Util = function(opts) {
   _.mkdirp = function(dir, opts) {
     return mkdirp.sync(dir, opts)
   }
+  // adding this as a utility because BaaS is providing dups by uuid!
+  _.uniqBy = require('lodash.uniqby')
 
   // To make generic API requests
-  _.request = request
+  _.request = req
   _.nrequest = nrequest
 
   var init = function() {
