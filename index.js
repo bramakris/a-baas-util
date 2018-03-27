@@ -355,13 +355,13 @@ var Util = function(opts) {
               var code = err.cause ? err.cause.code : 'UNKNOWN'
               var shouldRetry = false
               // These are errors we can address by retrying
-              var errs = ['ENOTFOUND', 'ETIMEDOUT', 'ESOCKETTIMEDOUT']
+              var errs = ['ENOTFOUND', 'ETIMEDOUT', 'ESOCKETTIMEDOUT', 'ECONNRESET']
               if (errs.includes(code) && retry) {
                 retries += 1
                 // POST is dangerous to retry whatever the circumstances
                 if (retries < retry && method !== 'post') {
                   shouldRetry = true
-                  if (code === 'ENOTFOUND') {
+                  if (code === 'ENOTFOUND' || code === 'ECONNRESET') {
                     gretries += 1
                     dnsfails += 1
                   }
