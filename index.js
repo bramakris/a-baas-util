@@ -317,6 +317,7 @@ var Util = function(opts) {
     var timeouts = 0
     var dnsfails = 0
     var gretries = 0
+    var socketresets = 0
 
     if (opts.trace) var logfile = fs.createWriteStream(opts.trace)
 
@@ -338,7 +339,7 @@ var Util = function(opts) {
               results = results.concat(res.entities)
               processed += 1
               if (opts.log) {
-                process.stderr.write('\r'+processed+'/'+data.length + ' D='+dnsfails+ ' T='+timeouts+' R='+gretries + ' ')
+                process.stderr.write('\r'+processed+'/'+data.length + ' D='+dnsfails+ ' T='+timeouts+' R='+gretries + ' S='+socketresets+ ' ')
               }
               pending--
               if (! pending) {
@@ -348,7 +349,7 @@ var Util = function(opts) {
                 if (! batchPending) return resolve(results)
                 // batch done, sleep and resume
                 if (opts.log) {
-                  process.stderr.write('\rZzz '+processed+'/'+data.length + ' D='+dnsfails+ ' T='+timeouts+' R='+gretries + ' ')
+                  process.stderr.write('\rZzz '+processed+'/'+data.length + ' D='+dnsfails+ ' T='+timeouts+' R='+gretries + ' S='+socketresets+ ' ')
                 }
                 setTimeout(function() {
                   // resume
@@ -368,13 +369,16 @@ var Util = function(opts) {
                 // POST is dangerous to retry whatever the circumstances
                 if (retries < retry && method !== 'post') {
                   shouldRetry = true
-                  if (code === 'ENOTFOUND' || code === 'ECONNRESET') {
+                  if (code === 'ENOTFOUND') {
                     gretries += 1
                     dnsfails += 1
                   }
                   else if (code === 'ETIMEDOUT' || code === 'ESOCKETTIMEDOUT') {
                     gretries += 1
                     timeouts += 1
+                  } else if (code === 'ECONNRESET') {
+                    gretries += 1
+                    socketresets += 1
                   }
                 }
               }
