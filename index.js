@@ -305,7 +305,7 @@ var Util = function(opts) {
   var doOp = function(method, name, data, opts) {
     // opts: {batch, sleep}
     // default is batch:1, sleep:0 to retain backward compatibility
-    opts = Object.assign({sleep: 0, batch: 1, log: false, retry: 0}, opts || {})
+    opts = Object.assign({sleep: 0, batch: 1, log: false, retry: 0, trace: false}, opts || {})
     var isBatched = opts.batch
     if (! Array.isArray(data)) data = [data]
     var batches = chunk(data, opts.batch)
@@ -317,6 +317,8 @@ var Util = function(opts) {
     var timeouts = 0
     var dnsfails = 0
     var gretries = 0
+
+    if (opts.trace) var logfile = fs.createWriteStream(opts.trace)
 
     // now we have this many batches, resolve them in order
     return new Promise((resolve, reject) => {
@@ -332,6 +334,7 @@ var Util = function(opts) {
             _.token()
             .then(token => API[meth + 'Collection'](name, token, obj))
             .then(res => {
+              if (opts.trace) logfile.write(JSON.stringify(res, null, 0)+'\n')
               results = results.concat(res.entities)
               processed += 1
               if (opts.log) {
@@ -344,6 +347,9 @@ var Util = function(opts) {
                 // don't sleep for last batch
                 if (! batchPending) return resolve(results)
                 // batch done, sleep and resume
+                if (opts.log) {
+                  process.stderr.write('\rZzz '+processed+'/'+data.length + ' D='+dnsfails+ ' T='+timeouts+' R='+gretries + ' ')
+                }
                 setTimeout(function() {
                   // resume
                   if (batchPending) nextBatch()
@@ -354,6 +360,7 @@ var Util = function(opts) {
             .catch(err => {
               var code = err.cause ? err.cause.code : 'UNKNOWN'
               var shouldRetry = false
+              if (opts.trace) logfile.write(err.toString('utf8')+'\n')
               // These are errors we can address by retrying
               var errs = ['ENOTFOUND', 'ETIMEDOUT', 'ESOCKETTIMEDOUT', 'ECONNRESET']
               if (errs.includes(code) && retry) {
@@ -372,7 +379,10 @@ var Util = function(opts) {
                 }
               }
               if (shouldRetry) run(obj)
-              else reject(err)
+              else {
+                if (opts.trace) logfile.close()
+                reject(err)
+              }
             })
           }
           process.nextTick(function() {
