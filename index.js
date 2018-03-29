@@ -335,11 +335,11 @@ var Util = function(opts) {
             _.token()
             .then(token => API[meth + 'Collection'](name, token, obj))
             .then(res => {
-              if (opts.trace) logfile.write(JSON.stringify(res, null, 0)+'\n')
+              if (opts.trace) logfile.write(`[${new Date().toISOString()}]\t${JSON.stringify(res, null, 0)}\n`)
               results = results.concat(res.entities)
               processed += 1
               if (opts.log) {
-                process.stderr.write('\r'+processed+'/'+data.length + ' D='+dnsfails+ ' T='+timeouts+' R='+gretries + ' S='+socketresets+ ' ')
+                process.stderr.write('\r'+processed+'/'+data.length + ' D='+dnsfails+ ' T='+timeouts+' R='+gretries + ' S='+socketresets+ '      ')
               }
               pending--
               if (! pending) {
@@ -361,7 +361,7 @@ var Util = function(opts) {
             .catch(err => {
               var code = err.cause ? err.cause.code : 'UNKNOWN'
               var shouldRetry = false
-              if (opts.trace) logfile.write(err.toString('utf8')+'\n')
+              if (opts.trace) logfile.write(`[${new Date().toISOString()}]\t${err.toString('utf8')}\n`)
               // These are errors we can address by retrying
               var errs = ['ENOTFOUND', 'ETIMEDOUT', 'ESOCKETTIMEDOUT', 'ECONNRESET']
               if (errs.includes(code) && retry) {
