@@ -339,7 +339,7 @@ var Util = function(opts) {
               results = results.concat(res.entities)
               processed += 1
               if (opts.log) {
-                process.stderr.write('\r'+processed+'/'+data.length + ' D='+dnsfails+ ' T='+timeouts+' R='+gretries + ' S='+socketresets+ '      ')
+                process.stderr.write('\r'+processed+'/'+data.length + ' D='+dnsfails+ ' T='+timeouts+ ' S='+socketresets+ ' R='+gretries+ '      ')
               }
               pending--
               if (! pending) {
@@ -349,7 +349,7 @@ var Util = function(opts) {
                 if (! batchPending) return resolve(results)
                 // batch done, sleep and resume
                 if (opts.log) {
-                  process.stderr.write('\rZzz '+processed+'/'+data.length + ' D='+dnsfails+ ' T='+timeouts+' R='+gretries + ' S='+socketresets+ ' ')
+                  process.stderr.write('\rZzz '+processed+'/'+data.length + ' D='+dnsfails+ ' T='+timeouts+ ' S='+socketresets+ ' R='+gretries+ ' ')
                 }
                 setTimeout(function() {
                   // resume
